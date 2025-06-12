@@ -1,64 +1,50 @@
 import torch, torch.nn.functional as F
 import gradio as gr
+from transformers import AutoTokenizer, AutoModelForSequenceClassification
 
-model_ckpt = "distilbert-base-uncased"
-batch_size = 16
-n_epochs = 3
-learning_rate = 1e-4
-RANK = 4
-ALPHA = 4
+MODEL_CKPT = "distilbert-base-uncased"
+DEVICE     = "cpu"     # HF Spaces default
 
+print("--- Loading tokenizer & base model ---")
+tokenizer = AutoTokenizer.from_pretrained(MODEL_CKPT)
+model     = AutoModelForSequenceClassification.from_pretrained(MODEL_CKPT)
 
-"""
----- Device ----
-"""
+print("--- Loading merged fine-tuned weights ---")
+model.load_state_dict(torch.load("DISTILBERT_MERGED.pth", map_location=DEVICE))
+model.to(DEVICE).eval()
 
-if torch.cuda.is_available():
-    device = torch.device('cuda')
-    print("Using CUDA (GPU)")
-elif torch.backends.mps.is_available() and torch.backends.mps.is_built():
-    device = torch.device('mps')
-    print("Using MPS (Apple Silicon GPU)")
-else:
-    device = torch.device('cpu')
-    print("Using device's CPU")
+# nice label names for IMDB
+model.config.id2label = {0: "NEGATIVE", 1: "POSITIVE"}
+model.config.label2id = {v: k for k, v in model.config.id2label.items()}
 
+def predict(text):
+    tokens = tokenizer(
+        text,
+        return_tensors="pt",
+        padding="max_length",
+        truncation=True,
+        max_length=256
+    ).to(DEVICE)
 
-from baseline import model, tok
-
-
-print("--- Loading fine-tuned LoRA weights ---")
-model.load_state_dict(torch.load('DISTILBERT_WITH_LORA.pth', map_location=device))
-model.to(device)
-model.eval()
-
-print("Model ready.")
-
-def predict_sentiment(text):
-    inputs = tok(text, return_tensors="pt", padding="max_length", truncation=True, max_length=256).to(device)
-    
     with torch.no_grad():
-        outputs = model(**inputs)
-    
-    probs = F.softmax(outputs.logits, dim=-1)
-    
-    labels = model.config.id2label
-    confidences = {labels[i]: p.item() for i, p in enumerate(probs[0])}
-    
-    return confidences
+        probs = F.softmax(model(**tokens).logits, dim=-1)[0]
+    return {model.config.id2label[i]: float(p) for i, p in enumerate(probs)}
 
-iface = gr.Interface(
-    fn=predict_sentiment,
-    inputs=gr.Textbox(lines=3, label="Movie Review", placeholder="Enter a movie review here..."),
+demo = gr.Interface(
+    fn=predict,
+    inputs=gr.Textbox(lines=3, label="Movie Review"),
     outputs=gr.Label(num_top_classes=2, label="Sentiment"),
-    title="Sentiment Analysis with a LoRA-tuned DistilBERT",
-    description="This is a demo for a DistilBERT model that was fine-tuned for sentiment analysis using a custom LoRA implementation from scratch. Enter a movie review to see the model's prediction.",
+    title="Sentiment Analysis (LoRA-merged DistilBERT)",
+    description=(
+        "DistilBERT fine-tuned on IMDB with a custom LoRA adapter. "
+        "Adapters have been merged so the model runs with no extra parameters."
+    ),
     examples=[
-        ["This movie was an absolute masterpiece. The acting was superb and the story was gripping!"],
-        ["I would not recommend this film to my worst enemy. It was a complete waste of time."],
-        ["The plot was a bit predictable, but the special effects were stunning."],
-        ["I'm not sure how I feel about this movie. It had some good moments but was also very slow."]
+        ["An absolute masterpiece with brilliant acting!"],
+        ["Total waste of two hours."],
+        ["Predictable plot but gorgeous visuals."]
     ]
 )
 
-iface.launch()
+if __name__ == "__main__":
+    demo.launch()

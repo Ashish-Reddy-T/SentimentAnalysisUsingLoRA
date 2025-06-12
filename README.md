@@ -16,7 +16,7 @@
 You can run your own review statements from my deployed huggingface's [SPACE](https://huggingface.co/spaces/Ashish-R/LoRAFromScratchSentimentAnalysis) 💖
 
 - It shows the percentage for the model thinks a statement is `negative` and `positive`. 
-- The model weights are made downloadable at my huggingface's [space](https://huggingface.co/spaces/Ashish-R/LoRAFromScratchSentimentAnalysis).
+- The model weights are made downloadable at my huggingface's [space](https://huggingface.co/spaces/Ashish-R/LoRAFromScratchSentimentAnalysis/tree/main) named `DISTILBERT_MERGED.pth`.
 - Any modifications/suggestions are always welcome!
 
 ---
